@@ -1,0 +1,170 @@
+---
+title: "Lab Report 4 - Data Analysis"
+author: "Anna Takacs"
+date: "10/30/2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+I open the WVS dataset (wave 6, 2010-2014).
+```{r include=FALSE}
+wvs <- read.csv(file = 'WVS.csv')
+library(plyr)
+#install.packages("ggplot2")
+library(ggplot2)
+#install.packages("lmtest")
+library(lmtest)
+#install.packages("sjPlot")
+library(sjPlot)
+#install.packages("sjmisc")
+library(sjmisc)
+```
+
+The definitions of the variables can be found here:
+<http://www.worldvaluessurvey.org/WVSDocumentationWV6.jsp>
+
+The dataset consists of observation from 2010 to 2014. 
+
+I would like to test whether age and highest educational level attained has an effect on how the given person evaluates the importance of employee's age when it comes to company performance. 
+
+I rename the relevant varibales in the dataset so that it's more convenient to work with. 
+The variable that I rename: 
+
+__V168 Companies that employ young people perform better than those that employ people of different ages__
+
+1.- Strongly agree
+
+2.- Agree
+
+3.- Disagree
+
+4.- Strongly disagree
+
+__V248 Highest educational level attained__
+
+1.- No formal education
+
+2.- Incomplete primary school
+
+3.- Complete primary school
+
+4.- Incomplete secondary school: technical/ vocational type
+
+5.- Complete secondary school: technical/ vocational type
+
+6.- Incomplete secondary school: university-preparatory type
+
+7.- Complete secondary school: university-preparatory type
+
+8.- Some university-level education, without degree
+
+9.- University - level education, with degree
+
+__V242 Age__
+
+Ranges from 16 to 99. 
+
+__V2 Country Code__ 
+
+156 for China and 840 for the United States. 
+
+Table that presents the number of answers given to the questions asking whether the respondent evaluates that the age of repondents have an impact on company performance. 
+```{r message=FALSE, warning=FALSE}
+wvs <- rename(wvs, c("V168" = "age_comp"))
+table(wvs$age_comp)
+wvs <- rename(wvs, c("V248" = "educ"))
+```
+
+Table that presents the number of respondent in each educational category. 
+```{r}
+table(wvs$educ)
+wvs <- rename(wvs, c("V242" = "age"))
+wvs <- rename(wvs, c("V2" = "country"))
+```
+
+Distrubution of respondents regarding their age. 
+```{r message=FALSE, warning=FALSE}
+ggplot(wvs, aes(x = age))+
+  geom_histogram(color = "darkblue", fill = "lightblue") + 
+  labs(title = "Age distribution of respondents",x = "Age", y = "Count")
+```
+
+# Exercise 1
+### Run a simple regression, and interpret your results.  (Did the results fit your expectations?  Why?  Why not?)  
+I will test the relationship for China and the US. (Country codes are the following: 156 for China and 840 for the United States.)
+
+Does age and educational level effects how a person evaluates whether a company perform better if it employs young people. 
+```{r}
+lm1 <-  lm(age_comp ~ age + educ, data = wvs, subset = (country == 156 | country == 840))
+summary(lm1)
+```
+
+
+The regression shows that both age and educational level have an impact on how a person sees employee's age a defining factor in a companies performance. For all variables, the coefficient are highly statistically significant. Interpreting the coefficients yields that the more education a person has, they are slightly more likely to think that variation in the employee's age is beneficial for a company and companies that employ only young people perform worse. On the other hand, older people are more likely to think that diversity is better for a company's performance. 
+
+The adjusted R-squared shows that the expanatory variables explain approximately 10% of the variation in the dependent variable. 
+
+This result meets my expectations, as older people and people with more education will realize the importance of diversity in a workplace.
+
+Then I run the Breusch-Pagan test, and check whether there is heteroskedasticity in my model, in other words, whether the distribution of the error term is the different for each value of the explanatory variable. We care about heteroskedasticity, as it can lead to inappropriate standard errors and thus, to incorrect p-values. 
+
+```{r}
+bptest(lm1)
+```
+The Breusch-Pagan test finds that there is heteroskedasticity in my model (p > 0.05).
+```{r}
+e <- lm1$residuals
+deg_age <- lm1$model$age
+deg_educ <- lm1$model$educ
+boxplot(e ~ factor(deg_age))
+```
+
+Around mid-ages, the residuals from predicting the view on employee age and its importance in company performance have more variance. 
+
+I would like to see run a regression with robust p-values and thus, I install and load the package 'rms'.
+```{r include=FALSE}
+# install.packages("rms")
+library(rms)
+```
+
+```{r}
+robcov(ols(age_comp ~ age + educ, data = wvs, 
+           subset = (country == 156 | country == 840), x = T, y = T))
+```
+
+With the robust standard error estimates, our results hasn't changed from the pervious regression and thus my conclusion applies to the robust standard error estimation too. 
+
+# Exercise 2
+### Add an interaction term to that model that you think might moderate the original relationship between X1 and X2.  Explain why you think an interaction might be present and in what direction it would work.  Explain your results.  Did it work out?  Yes?  No?
+In order to be able to test for interaction between variables, I rename the following variable: 
+
+__V46 When jobs are scarce, employers should give priority to people of this country over immigrants.__
+
+1.- Agree
+
+2.- Neither
+
+3.- Disagree
+
+```{r message=FALSE, warning=FALSE}
+wvs <- rename(wvs, c("V46" = "priority"))
+table(wvs$priority)
+```
+
+Functional form models allow us to see whether the effect of an explanatory variable on the dependent varible depends on the value of another explanatory variable.  
+In the new model I would like to see whether the effect of education depedns on whether more educated people view their jobs safe enought that they do not expect their priority in the job market. 
+```{r error = TRUE}
+lm2 <-  lm(age_comp ~ age + educ*priority, data = wvs, 
+           subset = (country == 156 | country == 840))
+summary(lm2)
+```
+
+```{r error = TRUE}
+theme_set(theme_sjplot())
+lm3 <- lm(age_comp ~ educ + educ * priority, data = wvs)
+plot_model(lm3, type = "pred", terms = c("educ", "priority"))
+```
+The results show that there is an assocation between priority and how people evaluate agewise diversity at a workplace. The association can be articulated as follows: 
+Generally speaking, the more educated a person is, the more they advocate for agewise diversity at a workplace. However, the extent by how much education make a person advocate for diversity changes based on the given person's priorities when it comes to priority regarding access to jobs as a citizen. So at higher levels of education, those people who feel entitled to receive jobs before immigrants are less likely to prefer agewise dievrsity at a workplace. 
+
+However, the difference between the slopes is not statistically significant... 
