@@ -1,0 +1,93 @@
+---
+title: "Homework 9"
+author: "Anna Takacs"
+date: "11/22/2019"
+output: html_document
+---
+# Web Scraping with Selectors
+
+Our example will rely on Mitch McConnell’s Wikipedia page: https://en.wikipedia.org/wiki/Mitch_McConnell
+
+# 1. Get HTML
+__Get the content of the page into R.__
+```{r include=FALSE}
+library(httr)
+library(rvest)
+library(xml2)
+library(stringr)
+library(tidyverse)
+library(dplyr)
+```
+
+```{r}
+URL <- GET("https://en.wikipedia.org/wiki/Mitch_McConnell")
+link_text <- content(URL, as = "text")
+text_xml <- read_html(link_text)
+text_xml
+```
+
+# 2. Get the info box
+__On the right side of the page is a box of structured content, called an info box. Wikipedia has many types of such info boxes to provide content comparably for a group of articles of the same class (e.g. the Members of the U.S. senate, Fortune 500 companies, Crime Syndicates etc.)__
+
+- __Find the CSS class of the infobox.__
+- __Extract the part of the HTML document that contains the infobox using the CSS information.__
+I use the html_node() command to extract conetents from the HTML with XPATHs. 
+```{r}
+table_info <- html_node(x = text_xml, 
+                        xpath = '//*[@id="mw-content-text"]/div/table[1]')
+table_info
+```
+
+# 3. Make a data frame
+__Parse the infobox table HTML you obtained above into a data frame.__
+__Name the columns of the table you obtain key and value. So, in the example for Mitch McConnell, “Deputy” would be the key, and the content information (i.e. the value) is “John Cornyn”.__
+```{r}
+table_content <- html_table(table_info)
+table_content <- data.frame(table_content)
+as.tibble(table_content)
+```
+
+```{r}
+name_senator <- names(table_content)[1]
+names(table_content) <- c("key", "value")
+table_content
+```
+
+
+__Filter the data frame (and rename variables if necessary) to the “Full name”, “Political Party”, and “Children”. Use this selection of variables for all subsequent questions.__
+
+
+```{r}
+filtered_table <- table_content %>% filter(key %in% c("Full name", "Political party", "Children"))
+filtered_table %>%
+  add_row(key = "Full name", value = "Mitch McConnell", .before = 1)
+```
+
+# 4. Make a function
+
+__Use the code above to make a function called get_wiki_info that uses a single input url (a Wikipedia URL) and outputs the data frame of the format above. There is no need to account for exceptions (e.g. no info box on the page; page does not exist etc.) - we will only use members of the U.S. Senate for this exercise.__
+__Show how your function works on the following two URLs:__
+https://en.wikipedia.org/wiki/Tammy_Duckworth
+https://en.wikipedia.org/wiki/Susan_Collins
+
+```{r}
+get_wiki_info <- function(URL, NAME){
+ URL <- GET(URL)
+ link_text <- content(URL, as = "text")
+ text_xml <- read_html(link_text)
+ table_info <- html_node(x = text_xml, 
+                        xpath = '//*[@id="mw-content-text"]/div/table[1]')
+ table_content <- html_table(table_info)
+ table_content <- data.frame(table_content)
+ as.tibble(table_content)
+ names(table_content) <- c("key", "value")
+ filtered_table <- table_content %>% filter(key %in% c("Full name", "Political party", "Children"))
+ filtered_table %>%
+  add_row(key = "Full name", value = NAME, .before = 1)
+}
+get_wiki_info("https://en.wikipedia.org/wiki/Tammy_Duckworth", "Tammy Duckworth")
+get_wiki_info("https://en.wikipedia.org/wiki/Susan_Collins", "Susan Collins")
+```
+
+
+
