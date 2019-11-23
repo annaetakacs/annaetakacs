@@ -1,0 +1,173 @@
+---
+title: "Homework 4 - Data Mining"
+author: "Anna Takacs"
+date: "11/19/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r include=FALSE}
+library(dplyr)
+library(caret)
+library(glmnet)
+library(dplyr)
+```
+
+# 1 Prediction with Linear Models
+Download the (in)famous crime dataset via
+```{r}
+ROOT <- "https://archive.ics.uci.edu/ml/machine-learning-databases/"
+crime <- read.csv(paste0(ROOT, "communities/communities.data"), 
+                  header = FALSE, na.strings = "?")
+colnames(crime) <- read.table(paste0(ROOT, "communities/communities.names"), 
+                              skip = 75, nrows = ncol(crime))[,2]
+rownames(crime) <- paste(crime$state, crime$communityname, sep = "_")
+```
+
+It is problematic to estimate a dummy variable for each county / community and thus, 
+```{r}
+colnames(crime)[1:5]
+which(colSums(is.na(crime)) == 1675)
+
+# I will get rid of the first four variables but I'll keep `state`. 
+# Of the remaining ones, more than twenty variables are mostly missing.
+crime <- select(crime, -county, -community, -fold) %>%
+  select_if(is.numeric) %>% select_if(~sum(is.na(.)) <= 1)
+crime$OtherPerCap[is.na(crime$OtherPerCap)] <- mean(crime$OtherPerCap, na.rm = TRUE)
+```
+
+__Split the dataset into training and testing using the createDataPartition function in the caret package after calling set.seed() using the number at the bottom of this page.__
+```{r message=FALSE, warning=FALSE}
+set.seed(892353692)
+states <- as.character(sort(unique(crime$state)))
+in_train <- sapply(states, FUN = function(st) {
+  crime_st <- filter(crime, state == st)
+  if (nrow(crime_st) == 1) return(1L)
+  return(createDataPartition(crime_st$ViolentCrimesPerPop, 
+                             p = 0.8, list = FALSE))
+})
+names(in_train) <- states
+training <- bind_rows(lapply(states, FUN = function(st) {
+  crime_st <- filter(crime, state == st)
+  x <- in_train[[st]]
+  return(crime_st[x, , drop = FALSE])
+}))
+testing <- bind_rows(lapply(states, FUN = function(st) {
+  crime_st <- filter(crime, state == st)
+  x <- in_train[[st]]
+  return(crime_st[-x, , drop = FALSE])
+}))
+```
+To parallelize the cross validation: 
+```{r message=FALSE}
+#install.packages("doMC")
+library(doMC) 
+registerDoMC(parallel::detectCores())
+```
+
+__Use the following methods via the train function in the caret package: glmnet, lm. Model the ViolentCrimesPerPop variable in the training data.frame, but you can include interactions, polynomials, and / or new variables that you construct from the other variables.___
+
+__Then use the predict function with newdata = testing to generate yi for each observation in the testing data.frame. Calculate the mean squared error between y from y in the testing data.frame. Which function and model produces the lowest mean squared error?___
+
+__Then use the predict function with newdata = testing to generate yi for each observation in the testing data.frame. Calculate the mean squared error between y from y in the testing data.frame. Which function and model produces the lowest mean squared error?___
+
+### OLS model
+I start with a large OLS model that includes all predictors we did not drop:
+```{r}
+ols <- lm(ViolentCrimesPerPop ~ ., data = training)
+y_hat <- predict(ols, newdata = testing)
+defaultSummary(data.frame(obs = testing$ViolentCrimesPerPop, pred = y_hat))
+```
+And I cut down the number of variables to obtain a model that predicts btter: 
+```{r, step, cache = TRUE}
+ols_step <- step(ols, trace = FALSE)
+y_hat <- predict(ols_step, newdata = testing)
+defaultSummary(data.frame(obs = testing$ViolentCrimesPerPop, pred = y_hat))
+```
+
+I include all pairwise interactions, which is more than the number of training observations:
+```{r error=TRUE, message=FALSE, warning=FALSE}
+ctrl <- trainControl(method = "cv", number = 10)
+enet <- train(ViolentCrimesPerPop ~ (.)^2, data = training, method = "glmnet", 
+              trControl = ctrl, tuneLength = 10, preProcess = c("center", "scale"))
+
+y_hat <- predict(enet, newdata = testing)
+defaultSummary(data.frame(obs = testing$ViolentCrimesPerPop, pred = y_hat))
+```
+
+__Note that some of the predictors have considerable missingness.__ 
+
+It has dropped all the following predictors:
+```{r}
+b <- coef(enet$finalModel, enet$bestTune$lambda)[ , 1]
+round(sort(b[b != 0]), digits = 5)
+```
+
+This model performs a little bit better than the OLS model. 
+
+
+# 2 Classification of Binary Outcomes
+__Dowload the loans.rds file from the Files section of Canvas to your working directory and load it into R via__
+```{r}
+loans <- readRDS("loans.rds")
+loans$y <- factor(loans$y, levels = 0:1, labels = c("rejected", "approved"))
+loans$has_job <- as.factor(sign(loans$Employment.Length - 1))
+```
+
+In these data, the outcome of interest is whether a personal loan was approved by a bank. The variables are
+
+- __Amount.Requested:__ The proposed amount for the loan
+- __Debt.To.Income.Ratio:__ The ratio of the applicant’s debt (excluding mortgages and the proposed loan) payments each month to the applicant’s stated monthly income
+- __Zip.Code:__ The 3-digit zip code of the applicant
+- __State:__ The state where the applicant lives
+- __Employment.Length:__ The number of years that the applicant has worked at the same job. 10 indicates at least ten years, 0 indicates less than one year, and -1 indicates unemployed.
+- __y:__ A binary variable indicating whether the loan was approved
+
+__Use the createDataPartition function in the caret package to split the data into a training set and a testing set.__
+```{r}
+in_train <- createDataPartition(y = loans$y,
+                                p = 0.8, list = FALSE)
+training <- loans[ in_train, ]
+testing  <- loans[-in_train, ]
+```
+
+We can estimate a logit model without the zipcode predictor in the training 
+data via `glm` (or `train`)
+```{r}
+logit <- glm(y ~ Debt.To.Income.Ratio * Amount.Requested + has_job + State, 
+             data = training, family = binomial)
+```
+and calculate the proportion of correct predictions in the testing data
+```{r}
+z <- predict(logit, newdata = testing, type = "response") > 0.5
+z <- factor(z, levels = c(FALSE, TRUE), labels = c("rejected", "approved"))
+confusionMatrix(z, testing$y)
+```
+Although this looks good, it is mostly a function of over 90% of loans applications 
+being turned down.
+
+__Use the following methods train function in the caret package: qda, glmnet.__
+
+### QDA
+```{r message=FALSE, warning=FALSE, error = TRUE}
+# Quadratic Discriminant Analysis
+
+QDA <- train(y ~ Debt.To.Income.Ratio * Amount.Requested + has_job, 
+             data = training, method = "qda", preProcess = c("center", "scale"))
+z <- predict(QDA, newdata = testing)
+confusionMatrix(z, testing$y)
+```
+
+### GLMNET
+```{r, glmnet, cache = TRUE, message = FALSE}
+ctrl <- trainControl(method = "cv", number = 10)
+enet <- train(formula(logit), data = training, method = "glmnet", 
+              trControl = ctrl, tuneLength = 10, preProcess = c("center", "scale"))
+z <- predict(enet, newdata = testing)
+confusionMatrix(z, testing$y)
+```
+
+This one is the best in terms of the proportion of correct predictions, but it 
+predicts that no one receives a loan, which is substantively useless if you
+are in the business of loaning money to (some) people who apply for it.
