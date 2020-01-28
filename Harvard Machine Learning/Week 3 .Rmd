@@ -1,0 +1,239 @@
+---
+title: "Harvard Week 3"
+author: "Anna Takacs"
+date: "1/16/2020"
+output: html_document
+---
+
+# Linear regression for prediction
+We will reformulate Galten's study with heights a continuous variable. 
+We will load it up with this code: 
+```{r}
+library(tidyverse)
+library(HistData)
+library(caret)
+library(dslabs)
+library(dplyr)
+
+galton_heights <- GaltonFamilies %>%
+     filter(childNum == 1 & gender == "male") %>%
+     dplyr::select(father, childHeight) %>%
+     rename(son = childHeight)
+```
+
+Generating training and testing sets:
+```{r}
+library(caret)
+y <- galton_heights$son
+test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
+
+train_set <- galton_heights %>% slice(-test_index)
+test_set <- galton_heights %>% slice(test_index)
+```
+
+If we would ignore the father's height, then we would simply predict the average height of sons.
+We can get the average this way: 
+```{r}
+avg <- mean(train_set$son)
+avg
+```
+
+R-squared loss can be obtained by this: 
+```{r}
+mean((avg - test_set$son)^2)
+```
+
+We know that the father's and son's height follows a bivariate normal distribution and so the conditional expectations equals to a regression line. 
+We also introduced least squares as a method for estimating the slope and intercept.
+
+To get a fitted model: 
+```{r}
+fit <- lm(son ~ father, data = train_set)
+fit$coef
+```
+
+Conditional expectation: 
+41.12 + 0.4235x
+
+Now we get a smaller loss: 
+```{r}
+y_hat <- fit$coef[1] + fit$coef[2]*test_set$father
+mean((y_hat - test_set$son)^2)
+```
+
+# Predict function
+Wecan use the predict function like this: 
+```{r}
+y_hat <- predict(fit, test_set)
+mean((y_hat - test_set$son)^2)
+```
+
+We get the same predictions as before. Using `predict` equals to using a regression line. 
+
+We can obtain different object types when we use lm or glm. We can look this up by using the following code: 
+
+```{r}
+?predict.lm
+?predict.glm
+```
+
+## Exercises
+```{r message=FALSE, warning=FALSE}
+set.seed(1, sample.kind = "Rounding") 
+n <- 100
+Sigma <- 9*matrix(c(1.0, 0.5, 0.5, 1.0), 2, 2)
+dat <- MASS::mvrnorm(n = 100, c(69, 69), Sigma) %>%
+      data.frame() %>% setNames(c("x", "y"))
+```
+
+
+```{r message=FALSE, warning=FALSE}
+f <- function(data){
+  set.seed(1, sample.kind = "Rounding")
+  rmse <- replicate(100, {
+    test_index <- createDataPartition(data$y, list = FALSE)
+    train_set <- data[-test_index, ]
+    test_set <- data[test_index, ]
+    # Train a linear model
+    fit <- lm(y ~ x, data = train_set)
+    y_hat <- predict(fit, test_set)
+    # Squared loss
+    sqrt(mean((y_hat - test_set$y) ^ 2))
+  })
+  structure(c(mean(rmse), sd(rmse)), names = c('mean', 'sd'))
+}
+results <- f(dat)
+results
+```
+__Q4__
+```{r}
+set.seed(1)
+n <- 100
+Sigma <- 9*matrix(c(1.0, 0.95, 0.95, 1.0), 2, 2)
+dat <- MASS::mvrnorm(n = 100, c(69, 69), Sigma) %>%
+	data.frame() %>% setNames(c("x", "y"))
+```
+
+```{r message=FALSE, warning=FALSE}
+f <- function(data){
+  set.seed(1, sample.kind = "Rounding")
+  rmse <- replicate(100, {
+    test_index <- createDataPartition(data$y, list = FALSE)
+    train_set <- data[-test_index, ]
+    test_set <- data[test_index, ]
+    # Train a linear model
+    fit <- lm(y ~ x, data = train_set)
+    y_hat <- predict(fit, test_set)
+    # Squared loss
+    sqrt(mean((y_hat - test_set$y) ^ 2))
+  })
+  structure(c(mean(rmse), sd(rmse)), names = c('mean', 'sd'))
+}
+results <- f(dat)
+results
+```
+
+Book: 
+
+```{r}
+library(dplyr)
+n <- 100
+Sigma <- 9*matrix(c(1.0, 0.5, 0.5, 1.0), 2, 2)
+dat <- MASS::mvrnorm(n = 100, c(69, 69), Sigma) %>%
+  data.frame() %>% setNames(c("x", "y"))
+
+
+y <- dat$y
+test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
+train_set <- dat %>% slice(-test_index)
+test_set <- dat %>% slice(test_index)
+fit <- lm(y ~ x, data = train_set)
+y_hat <- fit$coef[1] + fit$coef[2]*test_set$x
+mean((y_hat - test_set$y)^2)
+```
+
+Q2
+```{r}
+myRMSE <- function(size)
+{
+  Sigma <- 9*matrix(c(1.0, 0.5, 0.5, 1.0), 2, 2)
+  dat <- MASS::mvrnorm(n = size, c(69, 69), Sigma) %>%
+    data.frame() %>% setNames(c("x", "y"))
+  
+
+  RMSE <- replicate(n = size, {
+  
+    test_index <- createDataPartition(dat$y, times = 1, p = 0.5, list = FALSE)
+    
+    train_set <- dat %>% slice(-test_index)
+    test_set <- dat %>% slice(test_index)
+    
+    # Train linear model
+    fit <- lm(y ~ x, data = train_set)
+    
+    # Loss Function
+    y_hat <- predict(fit, test_set)
+    sqrt(mean((y_hat - test_set$y)^2))
+  })
+  list(mean(RMSE),sd(RMSE))
+}
+
+n <- c(100, 500, 1000, 5000, 10000)
+set.seed(1, sample.kind = "Rounding")
+print(sapply(n, myRMSE))
+```
+
+__Q6__
+```{r}
+set.seed(1)
+n <- 1000
+Sigma <- matrix(c(1.0, 0.75, 0.75, 0.75, 1.0, 0.25, 0.75, 0.25, 1.0), 3, 3)
+dat <- MASS::mvrnorm(n = 100, c(0, 0, 0), Sigma) %>%
+  data.frame() %>% setNames(c("y", "x_1", "x_2"))
+
+set.seed(1)
+test_index <- createDataPartition(dat$y, times = 1, p = 0.5, list = FALSE)
+
+train_set <- dat %>% slice(-test_index)
+test_set <- dat %>% slice(test_index)
+
+# Train linear model
+fit_1 <- lm(y ~ x_1, data = train_set)
+fit_2 <- lm(y ~ x_2, data = train_set)
+fit_12 <- lm(y ~ x_1 + x_2, data = train_set)
+
+# Loss Functions
+y_hat_1 <- predict(fit_1, test_set)
+(RMSE_1 <- sqrt(mean((y_hat_1 - test_set$y)^2)))
+
+y_hat_2 <- predict(fit_2, test_set)
+(RMSE_2 <- sqrt(mean((y_hat_2 - test_set$y)^2)))
+
+y_hat_12 <- predict(fit_12, test_set)
+(RMSE_12 <- sqrt(mean((y_hat_12 - test_set$y)^2)))
+```
+
+__Q7__
+```{r}
+set.seed(1)
+Sigma <- matrix(c(1.0, 0.75, 0.75, 0.75, 1.0, 0.95, 0.75, 0.95, 1.0), 3, 3)
+dat <- MASS::mvrnorm(n = 100, c(0, 0, 0), Sigma) %>%
+	data.frame() %>% setNames(c("y", "x_1", "x_2"))
+
+set.seed(1)
+test_index <- createDataPartition(dat$y, times = 1, p = 0.5, list = FALSE)
+
+train_set <- dat %>% slice(-test_index)
+test_set <- dat %>% slice(test_index)
+
+# Train linear model
+fit_1 <- lm(y ~ x_1, data = train_set)
+fit_2 <- lm(y ~ x_2, data = train_set)
+
+# Loss Functions
+y_hat_1 <- predict(fit_1, test_set)
+(RMSE_1 <- sqrt(mean((y_hat_1 - test_set$y)^2)))
+
+y_hat_2 <- predict(fit_2, test_set)
+(RMSE_2 <- sqrt(mean((y_hat_2 - test_set$y)^2)))
+```
