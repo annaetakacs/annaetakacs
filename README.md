@@ -1,5 +1,4 @@
-# annaetakacs
-Public repository - Anna Emese Takacs 
+# Anna Emese Takacs
 
 Columbia, '20, Quantiative Methods in the Social Sciences - data science focus
 
