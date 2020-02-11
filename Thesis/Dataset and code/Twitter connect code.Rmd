@@ -1,0 +1,50 @@
+---
+title: "Gender equality"
+author: "Anna Takacs"
+date: "2/2/2020"
+output: html_document
+---
+```{r}
+# install.packages("rtweet")
+library(rtweet)
+library(httpuv)
+library(rtweet)
+library(ggplot2)
+library(dplyr)
+library(tidytext)
+```
+
+```{r}
+ge <- search_tweets("#genderequality", n = 10000)
+head(ge)
+ge <- as.data.frame(ge)
+cols <- c("hashtags", "symbols","urls_url","urls_t.co", "urls_expanded_url", "media_url", "media_t.co", "media_expanded_url", "media_type", "ext_media_url", "ext_media_t.co", "ext_media_expanded_url", "ext_media_type", "mentions_user_id", "mentions_screen_name", "geo_coords", "coords_coords", "bbox_coords")
+ge[,cols] <- lapply(ge[,cols], as.character)
+write.csv(ge, 'genderequality_data3.csv')
+```
+
+
+```{r}
+GE_users <- search_users('#genderequality', n = 10000)
+head(GE_users)
+GE_users %>%
+  count(location, sort = TRUE) %>%
+  mutate(location = reorder(location, n)) %>%
+  top_n(20) %>%
+  ggplot(aes(x = location, y = n)) +
+  geom_col() +
+  coord_flip() +
+      labs(x = "Count",
+      y = "Location",
+      title = "Where Twitter users are from - unique locations ")
+GE_users <- as.data.frame(GE_users)
+sapply(GE_users, class)
+col_names <- c("created_at", "hashtags", "symbols", "urls_url", "urls_t.co", "urls_expanded_url", "media_url", "media_t.co", "media_expanded_url", "media_type", "ext_media_url", "ext_media_t.co", "ext_media_expanded_url", "mentions_user_id", "mentions_screen_name", "geo_coords", "coords_coords", "bbox_coords")
+GE_users[,col_names] <- lapply(GE_users[,col_names], as.character)
+write.csv(GE_users, 'genderequality_users3.csv')
+```
+
+
+
+
+

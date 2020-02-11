@@ -1,0 +1,50 @@
+---
+title: "GEI"
+author: "Anna Takacs"
+date: "2/10/2020"
+output: html_document
+---
+```{r}
+library(readxl)
+getwd()
+GEI_2005 <- read_xls("cleaned_GEI.xls", sheet = "2005")
+GEI_2010 <- read_xls("cleaned_GEI.xls", sheet = "2010")
+GEI_2012 <- read_xls("cleaned_GEI.xls", sheet = "2012")
+GEI_2015 <- read_xls("cleaned_GEI.xls", sheet = "2015")
+GEI_2017 <- read_xls("cleaned_GEI.xls", sheet = "2017")
+GEI_2005$year <- 2005
+GEI_2010$year <- 2010
+GEI_2012$year <- 2012
+GEI_2015$year <- 2015
+GEI_2017$year <- 2017
+```
+
+```{r}
+library(tidyr)
+df3 <- do.call(rbind.data.frame, list(GEI_2005, GEI_2010))
+df3$year <- as.character(df3$year)
+df4 <- complete(df3, year, Country)
+GEI_1 <- df4[order(df4$Country ,df4$year),]
+
+
+df3 <- do.call(rbind.data.frame, list(GEI_1, GEI_2012))
+df3$year <- as.character(df3$year)
+df4 <- complete(df3, year, Country)
+GEI_2 <- df4[order(df4$Country ,df4$year),]
+
+df3 <- do.call(rbind.data.frame, list(GEI_2, GEI_2015))
+df3$year <- as.character(df3$year)
+df4 <- complete(df3, year, Country)
+GEI_3 <- df4[order(df4$Country ,df4$year),]
+
+common_col_names <- intersect(names(GEI_3), names(GEI_2017))
+GEI <- merge(GEI_3, GEI_2017, by = common_col_names,  all.x = TRUE, all.y = TRUE)
+
+
+write.csv(GEI, 'Genger_equality_index_clean.csv')
+colnames(GEI)
+
+str(GEI)
+```
+
+
