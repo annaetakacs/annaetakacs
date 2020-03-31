@@ -1,0 +1,624 @@
+---
+title: 'Data Visualization Assignment #1'
+author: "Anna Takacs"
+date: "2/17/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Indebted to Learn
+
+
+The following study aims at describing the financial state of households in the United States from 1989 onward with a focus on education loans. It builds upon the Survey of Consumer Finances that is available until 2016. 
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+SCF <- read.csv("survey_SCF.txt", header = TRUE, sep = ",", dec = ".")
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(grid)
+library(ggalt)
+library(ggthemes)
+library(hrbrthemes)
+library(tidyverse)
+library(wesanderson)
+library(RColorBrewer)
+library(plyr)
+library(highcharter)
+library(viridisLite)
+library(DT)
+```
+
+
+# 1. Debt over time
+
+This part of the analysis focuses on how household indebtedness has evolved over time. 
+
+```{r include=FALSE}
+# Create average value of education loans for the given years
+student_debt <- SCF %>%
+  select(EDN_INST, YEAR, INCOME)
+
+student_debt <- student_debt %>% as_tibble() %>% 
+  group_by(YEAR) %>%
+  mutate(mean_educ_loan = mean(EDN_INST),
+         mean_income = mean(INCOME),
+         educdebt_income_ratio = mean_educ_loan / mean_income * 100)
+
+student_debt <- student_debt %>%
+  select(YEAR, mean_educ_loan, mean_income, educdebt_income_ratio) %>%
+  distinct()
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+brewer.pal(n = 8, name = "Pastel1")
+```
+
+### 1.1 
+
+The first graph presents how the ratio between the average value of education loan and income has evolved over time. This line chart with an emphasis on the values for given years shows the trend clearer, where the ratio has worsened significantly from 2007 and onward. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+
+ggplot(student_debt, aes(YEAR, educdebt_income_ratio)) + 
+  geom_line(size = 2, alpha = 0.9, linetype = 1, color="#CCEBC5") + 
+  geom_point(size=2) + 
+  scale_fill_brewer(palette="Set3") +
+  theme_ipsum() + 
+  ylab("Education loan to income ratio as percentage") + 
+  xlab("Year") +
+  labs(title = "Average value of total education loan to total income ratio per household in the United States",
+       caption = "Data source: Survey of Consumer Finances (1989 - 2016)") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic") ) 
+```
+
+### 1.2 
+
+As the education debt for each year in the sample is strongly skewed towards 0, it is difficult to visualize the spread of the values with boxplots. However, the below figure shows that the increase in the ration of education loan to income in figure 1.1 might be driven by outlier values in those years. 
+
+This graph shows that the spead of education loans was outstanding in 1992 and after the financial crisis. As the peaks on this graph apper in 2010 and 2016, it shows consistency with the findings of graph 1.1 implying that the worsening ratio of education loan to income was either fully or partially driven by increased values of education loans in households. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+debt_range <- SCF %>%
+  select(EDN_INST, YEAR, INCOME) %>%
+  group_by(YEAR) 
+
+ggplot(debt_range, aes(group = YEAR, x = YEAR, y = EDN_INST)) + 
+  geom_point(size=1, alpha = 1, color = "#7ba8ce") + 
+  theme_ipsum() +
+  ylab("Education debt in dollars for different households") + 
+  xlab("Year") +
+  labs(title = "The spread of education debt across different households",
+       caption = "Data source: Survey of Consumer Finances (1989 - 2016)") +
+   theme(
+    plot.title = element_text(hjust = 0.5, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic"))
+```
+
+### 1.3
+__How did student loan debt compare to other types of debt (car loans, mortgage, credit card, etc.)?__
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+debt_compared <- SCF %>%
+  select(DEBT, NH_MORT, OTHLOC, CCBAL, INSTALL, EDN_INST, VEH_INST, YEAR, INCOME)
+
+debt_compared <- debt_compared %>% as_tibble() %>% 
+  group_by(YEAR) %>%
+  mutate(mean_debt = mean(DEBT),
+         mean_mort = mean(NH_MORT),
+         mean_other_credit = mean(OTHLOC),
+         mean_credicard_balance = mean(CCBAL),
+         mean_installmentloan = mean(INSTALL),
+         mean_educ = mean(EDN_INST),
+         mean_vehic = mean(VEH_INST),
+         mean_income = mean(INCOME))
+
+debt_compared <- debt_compared %>%
+  select(YEAR, mean_debt, mean_mort, mean_other_credit, mean_credicard_balance, mean_installmentloan, mean_educ, mean_vehic) %>%
+  distinct()
+
+debt_compared_viz <- debt_compared %>%
+  select(YEAR, mean_mort, mean_other_credit, mean_credicard_balance, mean_installmentloan, mean_educ, mean_vehic) %>%
+  gather(key = "debt_value", value = "Amount", - YEAR)
+```
+
+The stacked bar chart below allows us to follow the overall value of debts over time and break down the analysis to its components. 
+
+It shows how the value of the types of debt compare over time. The total value of debt moves in parallel with the finding of the previous graph by showing two peak periods in 1992 and gradually increasing from 2005. Interesting to note that for the last year the average value of total debts has decreased which is not visible in the previous graphs. 
+
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+debt_compared_viz %>%
+  ggplot(aes(x = YEAR, y = Amount, fill = debt_value)) +
+  geom_bar(stat = "identity", alpha = 1) + 
+  theme_ipsum() +
+  ylab("Average value of debt in dollars") + 
+  xlab("Year") +
+  labs(title = "The average value of debt held by household in the United States",
+       caption = "Data source: Survey of Consumer Finances (1989 - 2016)") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic")) +
+  scale_fill_discrete(name="Type of debt",
+                         breaks=c("mean_creditcard_balanace", "mean_educ", "mean_installmentloan", "mean_mort", "mean_other_credit", "mean_vehic"),
+                         labels=c("Value of credit card balances", "Value of education loans", "Value of installment loans", "Value of mortgages and home equity loans", "Value of other lines of credit", "Value of vehicle loans")) +
+  scale_fill_brewer(palette="Pastel1") +
+  labs(fill = "Size of various debts")
+
+```
+
+# 2. Tell me who you are
+
+This part of the analysis looks at the data only for 2016 and would like to uncover patterns ralated to family background. 
+
+```{r include=FALSE}
+SCF_2016 <- SCF %>% 
+  filter(YEAR == 2016) %>% 
+  select(AGE, HHSEX, EDUC, KIDS, RACE, MARRIED, INCOME, EDN_INST)
+# HHSEX: VALUE  LABEL: 1  male, 2  female
+# EDUC: -1  LESS THAN 1ST GRADE
+              #1  1ST, 2ND, 3RD, OR 4TH GRADE
+              # 2  5TH OR 6TH GRADE
+              # 3  7TH OR 8TH GRADE
+              # 4  9TH GRADE
+              # 5  10TH GRADE
+              # 6  11TH GRADE
+               #7  12TH GRADE, NO DIPLOMA
+              # 8  HIGH SCHOOL GRADUATE - HIGH SCHOOL DIPLOMA OR EQUIVALENT
+              # 9  SOME COLLEGE BUT NO DEGREE
+              #10  ASSOCIATE DEGREE IN COLLEGE - OCCUPATION/VOCATION PROGRAM
+              #11  ASSOCIATE DEGREE IN COLLEGE - ACADEMIC PROGRAM
+             # 12  BACHELOR'S DEGREE (FOR EXAMPLE: BA, AB, BS)
+              # 13  MASTER'S DEGREE
+             #  14  DOCTORATE OR PROFESSIONAL SCHOOL DEGREE
+# KIDS: Includes natural children,step-children, and foster children of household head or spouse/partner.
+# RACE:       1  white non-Hispanic
+              # 2  black / African American
+               # 3  Hispanic
+               # 5  Other
+# MARRIED:      1  married/living with partner
+               # 2  neither married nor living with partner
+```
+
+
+```{r include=FALSE}
+ggplot(SCF_2016) + geom_bar(aes(x = EDUC))
+
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST == 0] = "Zero"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 1 & SCF_2016$EDN_INST <= 50000] = "Low"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 50000 & SCF_2016$EDN_INST <= 200000 ] = "Moderate"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 200000 & SCF_2016$EDN_INST <= 300000 ] = "Average"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 300000 & SCF_2016$EDN_INST <= 400000 ] = "Growing"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 400000] = "High"
+SCF_2016$EDUC_LOANCAT = factor(SCF_2016$EDUC_LOANCAT,
+                    levels=c("Zero", "Low", "Moderate", "Average", "Growing", "High"))
+
+ggplot(SCF_2016) + geom_bar(aes(x = EDUC_LOANCAT))
+
+SCF_2016$EDUC_LEVEL[SCF_2016$EDUC >= 10] = "Degree or above"
+SCF_2016$EDUC_LEVEL[SCF_2016$EDUC < 10] = "No degree"
+
+SCF_2016 <- SCF_2016 %>% 
+  filter(EDUC_LOANCAT != "NA") 
+unique(SCF_2016$EDUC_LOANCAT)
+
+SCF_2016$HHSEX[SCF_2016$HHSEX == 2] = "Female"
+SCF_2016$HHSEX[SCF_2016$HHSEX == 1] = "Male"
+
+
+SCF_2016$RACE[SCF_2016$RACE == 2] = "Black/African American"
+SCF_2016$RACE[SCF_2016$RACE == 1] = "White, non-hispanic"
+SCF_2016$RACE[SCF_2016$RACE == 3] = "Hispanic"
+SCF_2016$RACE[SCF_2016$RACE == 5] = "Other"
+```
+
+In the following sections the variable for education loan is regrouped into the following categories: 
+
+- 0: Zero
+
+- 1 - 50 000: Low 
+
+- 50 001 - 200 000: Moderate
+
+- 200 001 - 300 000: Average
+
+- 300 001 - 400 000: Growing
+
+- 400 001 and above: High
+
+### 2.3 
+
+The below graph observes differences between households where the head of the household has obtained a minimum of one degree and where they haven't. The type of the bar chart is designed to show proportions compared to the total number of people in each groups. 
+
+It is visible that in the degree holder group the households tend to take on a larger proportion of education loan on average compared to the non-degree holder group where more people fall into the category holding only a low value of education loan. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+SCF_2016 %>%
+  ggplot(aes(EDUC_LEVEL, EDN_INST, fill = EDUC_LOANCAT)) +
+  geom_bar(position = "fill", stat = "identity", alpha = 1) +
+  theme_ipsum() +
+  scale_fill_brewer(palette="Pastel1") +
+  ylab("Proportion of people in given education loan brackets") + 
+  xlab("Education level") +
+  labs(title = "Does holding a degree make you more likely to take on a greater education loan for your children?",
+       caption = "Data source: Survey of Consumer Finances (1989 - 2016)") +
+  theme(
+    plot.title = element_text(hjust = 0.2, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic")) +
+  labs(fill = "Size of education loan")
+```
+
+### 2.2 
+
+The next up graph aim to observe the age range of the head of the household holding different amount of education loans. This type of boxplot, especially in the arangement that age is on the x-axis, allows the reader to see age as a continuous variable and show "how long being heavily indebted with education loan lasts". 
+
+
+There is a clear trend showing that behing in the _High_ category for education loan happens mostly to households where the head of the household is below 30. And as the age of the head of the household increases the size of the education loan tends to be smaller. It is interesting to note that for the moderate and average categories the groups has changed order as those age groups tend to take on loans for their children. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+ggplot(SCF_2016, aes(x = AGE, y = EDUC_LOANCAT)) +
+  geom_boxplot(color="#88BF7B") +
+  labs(x = "Age", y="Size of education debt") +
+  theme_ipsum() +
+  scale_fill_brewer(palette="Pastel1") +
+  labs(title = "Is the education loan increase or decrease based on the age of the head of the household?",
+       caption = "Data source: Survey of Consumer Finances (1989 - 2016)") +
+  theme(
+    plot.title = element_text(hjust = 0.2, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic"))
+```
+
+
+### 2.3 
+
+Graph 2.3 aims to observe deviations in education loans for different type of households. As before, the boxplot was not an effective way to visualize trends as even with restricting the y axis, the values were too skewed. This faceting for scatterplots works well for comparing hosueholds as the values can be directly put next to each other and labels can show clear differences between different facets. 
+
+As the graph does not provide information about mean values, we can only draw conclusion about the spread of education loans held by the households. Even though differences are not large, it is important to note that we can only see higher values of edcuation debt in the _Black/African American_ category, while other categories show larger values for men. on the other hand, in the _White, non-hispanic_ category, the value of education debt is more evenly spread out for both men and women, raising the question whether conclusion can be drawn that those households where the head is white or non-hispanic tend to take on education debts more consistenly across time and space. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+ggplot(SCF_2016, 
+       mapping = aes(x = HHSEX, y = EDN_INST)) +
+  geom_point(color = "#7ba8ce") +
+  facet_grid(. ~ RACE, scales = "free") + 
+  labs(x = "Sex of the head of the household", y="Education loan") +
+  theme_ipsum() +
+  labs(title = "Do men or women take on larger education debt as head of the household?",
+       caption = "Data source: Survey of Consumer Finances (1989 - 2016)") +
+  theme(
+    plot.title = element_text(hjust = 0.2, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic"))
+```
+
+# 3. Wealth and Income Distribution
+
+This section aims at observing trends between education loan and income and wealth for the year of 2016. 
+
+```{r include=FALSE}
+SCF_2016 <- SCF %>% 
+  filter(YEAR == 2016) %>% 
+  select(INCCAT, NWCAT, INCOME, EDN_INST, SAVED, AGE)
+as.character(SCF_2016$SAVED)
+
+as.character(SCF_2016$INCCAT)
+
+# INCCAT	Income percentile groups
+# Income percentile groups
+           #1 = 0-20
+           #2 = 20-39.9
+           #3 = 40-59.9
+           #4 = 60-79.9
+           #5 = 80-89.9
+           #6 = 90-100
+
+# NWCAT	Net worth percentile groups
+            #1 = 0-24.9
+           #2 = 25-49.9
+           #3 = 50-74.9
+           #4 = 75-89.9
+           #5 = 90-100
+           
+# INCOME	Total amount of income of household, 2016 dollars
+# SAVED	Indicator of whether the household saved over the past 12 months
+            # 1 = Household saved
+           # 0 = Household did not save
+```
+
+
+### 3.1 
+
+There is a triangle between age, wealth and loans that households take on. It is a trade-off for families but the dynamics behind the decision is not clear. For this reason, the following graph aims to visualize the trend between these three variables. The smoothened line is added to articulate the relationship between education loan and age better in case it would be clear from the scatter. 
+
+As before, we can see that the size of the education loan decreases as the head of the household gets older and eventually gets closer to zero. However, when looking at vertical differences in the graph and making comparison between families holding large and smaller education loans and their income percentile groups: we are not able to observe a clear trend. It is both the case that weathier families hold small and large amount of education loan and that lower income households do the same.
+
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+plot <- ggplot(SCF_2016, aes(x = AGE, y = EDN_INST)) +
+  geom_point(alpha = 0.5, aes(color = INCCAT)) +
+  geom_smooth(span = 0.3, color = "#88BF7B") +
+  ylim(low = -20000, high = 250000) + 
+  xlim(low = 20, high = 76) 
+plot + theme_ipsum() +
+   labs(title = "Do people in higher income percentiles hold less education loans?",
+       caption = "Data source: Survey of Consumer Finances (1989 - 2016)") +
+  theme(
+    plot.title = element_text(hjust = 0.2, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic")) +
+   labs(x = "Age", y = "Value of education loan in US dollars", colour = "Income percentile group")
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST == 0] = "Zero"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 1 & SCF_2016$EDN_INST < 50000] = "Low"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 50000 & SCF_2016$EDN_INST < 200000 ] = "Moderate"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 200000 & SCF_2016$EDN_INST < 300000 ] = "Average"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 300000 & SCF_2016$EDN_INST < 400000 ] = "Growing"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 300000 & SCF_2016$EDN_INST < 400000 ] = "High"
+SCF_2016$EDUC_LOANCAT[SCF_2016$EDN_INST > 400000] = "Extreme"
+SCF_2016$EDUC_LOANCAT = factor(SCF_2016$EDUC_LOANCAT,
+                    levels=c("Zero", "Low", "Moderate", "Average", "Growing", "High", "Extreme"))
+SCF_2016 <- SCF_2016 %>% 
+  filter(EDUC_LOANCAT != "NA") 
+unique(SCF_2016$EDUC_LOANCAT)
+```
+
+### 3.2 
+
+As before, I use facets to shows clear trends between groups. Here the facets compare groups with different amount of education loans. 
+
+Interesting to note in the separate facets the skewdness of dots differs between loan categories. In the first facet from the left, the net value percentile group tends to be higher than the income percentile group, while in the second and third facet this relationship changes in a suble way. This implies that those families who take on larger education loans on average rank higher in terms of income percentile group than according to the net value percentile group. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+ggplot(SCF_2016, aes(x = INCCAT, y = NWCAT)) + 
+        geom_jitter(alpha = 0.5, color = "#DECBE4") + 
+  facet_grid(cols = vars(EDUC_LOANCAT)) +
+  theme_ipsum() +
+   labs(title = "Do people in higher income percentiles hold less education loans?",
+       caption = "Data source: Survey of Consumer Finances (1989 - 2016)") +
+  theme(
+    plot.title = element_text(hjust = 0, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic")) +
+   labs(x = "Income percentile group", y = "Net value percentile group")
+```
+
+# 4. Going broke
+
+Part 4 of this analysis focuses again on the whole dataset available from 1989 to 2016. 
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+SCF$bankrupt[SCF$BNKRUPLAST5 == 1] = "Yes"
+SCF$bankrupt[SCF$BNKRUPLAST5 == 0] = "No"
+
+student_debt <- SCF %>%
+  select(EDN_INST, YEAR, INCOME, BNKRUPLAST5, DEBT, bankrupt)
+
+#     VALUE  LABEL (0  no, 1  yes)
+
+SCF_nobankrupt <- student_debt %>% 
+  filter(BNKRUPLAST5 == 0)
+```
+
+```{r include=FALSE}
+colors <- c("Mean income" = "#6c90b0", "Mean value of debt" = "#8ebd84", "Mean value of education loan" = "#ba91c7")
+SCF_bankrupt <- student_debt %>% 
+  filter(BNKRUPLAST5 == 1)
+SCF_bankrupt <- SCF_bankrupt %>% 
+  group_by(YEAR) %>%
+  mutate(mean_debt = mean(DEBT),
+         mean_educ_loan = mean(EDN_INST),
+         mean_income = mean(INCOME))
+bankrupt <- SCF_bankrupt %>% ggplot(aes(x = YEAR)) + 
+  geom_line(aes(y = mean_income), color = "#6c90b0") + 
+  geom_line(aes(y = mean_debt), color="#8ebd84") + 
+  geom_line(aes(y = mean_educ_loan), color="#ba91c7") +
+  theme_ipsum() +
+   labs(title = "Average income, debt and education loan for bankrupt households") +
+  theme(
+    plot.title = element_text(hjust = 0, size = 12)) +
+   labs(x = "Year", y = "") +
+    scale_color_manual(values = colors) +
+  ylim(low = 0, high = 337794.75) 
+```
+
+```{r include=FALSE}
+SCF_nobankrupt <- student_debt %>% 
+  filter(BNKRUPLAST5 == 0)
+SCF_nobankrupt <- SCF_nobankrupt %>% 
+  group_by(YEAR) %>%
+  mutate(mean_debt = mean(DEBT),
+         mean_educ_loan = mean(EDN_INST),
+         mean_income = mean(INCOME))
+nobankrupt <- SCF_nobankrupt %>% ggplot(aes(x = YEAR, color = 'variable')) + 
+  geom_line(aes(y = mean_income), color = "#6c90b0") + 
+  geom_line(aes(y = mean_debt), color="#8ebd84") + 
+  geom_line(aes(y = mean_educ_loan), color="#ba91c7") +
+  theme_ipsum() +
+   labs(title = "Average income, debt and education loan for households that did not go bankrupt",
+       caption = "Data source: Survey of Consumer Finances (1989 - 2016)") +
+  theme(
+    plot.title = element_text(hjust = 0, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic")) +
+   labs(x = "Year", y = "") +
+  ylim(low = 0, high = 1351179) 
+
+```
+
+### 4.1 
+As the below graph shows trends over time for average value of income, average value of debt and education loan for two different household types: ones who declared bankruptcy and the ones who did not. 
+
+The first graph shows clear trends that the average income decreased below the debt held by households, while on the second graph it did not happen. This does not allow for conclusion that the monthly repayments of that debt for the first group exceeded the monthly income as these averages are taken as annual averages. However, if households in the first group did not have savings from previous years they could annonce bankruptcy. 
+
+Education loan did not seem to play a significant role in the bankrupcy of the households. 
+
+However, it is important to note that the scale of the first graph on the y-axis is 1/3 of the scaling of the x-axis. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+library(ggpubr)
+figure <- ggarrange(bankrupt, nobankrupt,
+                    ncol = 1, nrow = 2, common.legend = TRUE, legend="bottom") 
+annotate_figure(figure,
+               bottom = text_grob("Blue: average value of income \n Green: average value of debt \n Purple: average value of education loan", hjust = 1, x = 1, face = "italic", size = 8))
+
+```
+
+
+```{r include=FALSE}
+student_debt <- SCF %>%
+  select(YEAR, INCOME, FOODHOME, FOODDELV, FOODAWAY, DEBT)
+
+# FOODHOME	Total amount spent on food at home, annualized
+# FOODDELV	Total amount spent on food delivered to home, annualized
+# FOODAWAY	Total amount spent on food away from home, annualized
+
+student_debt$debt_cat[student_debt$DEBT == 0] = "Zero"
+student_debt$debt_cat[student_debt$DEBT > 0 & student_debt$DEBT <= 25611] = "Below median"
+student_debt$debt_cat[student_debt$DEBT > 25611 & student_debt$DEBT <= 261237 ] = "Median-mean"
+student_debt$debt_cat[student_debt$DEBT > 261237 & student_debt$DEBT <= 157980 ] = "Mean-third qu."
+student_debt$debt_cat[student_debt$DEBT > 157980] = "Highest"
+student_debt$debt_cat = factor(student_debt$debt_cat,
+                    levels=c("Zero", "Below median", "Median-mean", "Mean-third qu.", "Highest"))
+student_debt <- student_debt %>% 
+  filter(debt_cat != "NA") 
+
+```
+
+
+```{r include=FALSE}
+foodhome <- student_debt %>% 
+  group_by(debt_cat) %>%
+  mutate(mean_foodhome = mean(FOODHOME)) 
+
+student_debt_averaged <- ddply(student_debt, .(debt_cat, YEAR), summarize, mean_fooddelv = mean(FOODDELV))
+```
+
+### 4.2 
+
+The last graph in this section aims to see whether households holding different value of debt (all debt included) show distinct trends in their food deliveries. 
+
+As it is visible, those families in the most indebted category spend the most annually on food delivery on average and those households in "in-between" categories spend less than households without any debt. As a conclusion, it is a U-shaped relationship: as people start to take on debts they reduce their delivery spendings but after a certain amount of debt they reverse that trend. 
+
+This line graph monitors overtime trends and as lines depict different groups in our sample, the comparison becomes easier. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+myColors <- brewer.pal(5,"Pastel1")
+names(myColors) <- levels(student_debt_averaged$debt_cat)
+colScale <- scale_colour_manual(values = myColors)
+
+
+plot <- student_debt_averaged %>% 
+  ggplot(aes(x = YEAR, color = debt_cat)) + 
+  geom_line(aes(y = mean_fooddelv)) + 
+  theme_ipsum() +
+   labs(title = "Average value spent on food delivered to home (annualized)",
+       caption = "Data source: Survey of Consumer Finances (1989 - 2016)") +
+  theme(
+    plot.title = element_text(hjust = 0, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic")) +
+   labs(x = "Year", y = "Average value spend on food delivered to home in US dollars", colour = "Debt category") 
+
+plot + colScale
+
+```
+
+
+
+# Interactivity
+
+Transforming graphs from static to interactive format is only important when the interactive format will offer more insights into the original graph. 
+
+```{r include=FALSE}
+cols <- magma(5)
+cols <- substr(cols, 0, 7)
+
+thm <- hc_theme(
+  colors = cols,
+  chart = list(
+    backgroundColor = NULL)) 
+```
+
+### 4.1 
+
+As in stacked bar charts the values are not clear for each stack, I wanted to create an interective version so that more concrete information is available for each debt category for each year. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+hchart(debt_compared_viz, "bar", hcaes(x = YEAR, y = Amount, group = debt_value)) %>%
+  hc_xAxis(type = "logarithmic") %>%
+  hc_plotOptions(series=list(stacking='normal')) %>%
+  hc_add_theme(thm) %>%
+  hc_yAxis(title = list(text = "Amount of debt held by household in US dollars"),
+           opposite = TRUE,
+           minorTickInterval = "auto",
+           minorGridLineDashStyle = "LongDashDotDot",
+           showFirstLabel = FALSE,
+           showLastLabel = FALSE) %>%
+   hc_title(text = "Average value spent on food delivery based on household indebtedness",
+           margin = 20, align = "middle",
+           style = list(color = "#590281", useHTML = TRUE))
+```
+
+### 4.2 
+
+Lastly, I chose a "clickbait" graph as the lines on this graph cross numerous times and I thought that it would be insightful to see the concrete values at given point in time. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+hchart(student_debt_averaged, "line", hcaes(x = YEAR, y = mean_fooddelv, group = debt_cat)) %>%
+  hc_xAxis(type = "logarithmic") %>%
+  hc_add_theme(thm) %>%
+  hc_yAxis(title = list(text = "Money spent on food delivery (annually)"),
+           opposite = TRUE,
+           minorTickInterval = "auto",
+           minorGridLineDashStyle = "LongDashDotDot",
+           showFirstLabel = FALSE,
+           showLastLabel = FALSE,
+           plotBands = list(
+             list(from = median(student_debt_averaged$mean_fooddelv), to = mean(student_debt_averaged$mean_fooddelv), color = "rgba(100, 0, 0, 0.1)",
+                  label = list(text = "Range between median and mean value spent of food delivery")))) %>%
+   hc_title(text = "Average value spent on food delivery based on household indebtedness",
+           margin = 20, align = "middle",
+           style = list(color = "#590281", useHTML = TRUE)) %>%
+  hc_xAxis(title = list(text = "Year"))
+```
+
+
+
+# 6. Data Table
+
+### 6.1 
+
+The below data table allows the reader to search observations of households who went bankrupt and who didn't and look at the range of indebtedness those had, the range of education loans they held and years when they indicated their bankruptcy (within 5 years of time). The reader can furthermore search for the amount of education loan and see whether for example those households who did not take on any loan belonged to a higher earning group. 
+
+```{r echo=FALSE}
+SCF$bankrupt[SCF$BNKRUPLAST5 == 1] = "Yes"
+SCF$bankrupt[SCF$BNKRUPLAST5 == 0] = "No"
+
+student_debt <- SCF %>%
+  select(YEAR, INCOME, DEBT, EDN_INST, bankrupt) %>%
+  filter(INCOME >= 5000000)
+
+pretty_headers <- c("Year", "Income", "Debt in dollars", "Education loan", "Bankrupt?") %>%
+  str_to_title()
+
+datatable(student_debt, colnames = pretty_headers, filter = list(position = "top")) %>% 
+  formatStyle('YEAR',  color = 'white', 
+                backgroundColor = '#590281', fontWeight = 'bold')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

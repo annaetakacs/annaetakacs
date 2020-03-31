@@ -1,0 +1,472 @@
+---
+title: 'Data Visualization Assignment #2'
+author: "Anna Takacs"
+date: "3/28/2020"
+output: html_document
+---
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(ggmap)
+library(RColorBrewer)
+library(sp)
+library(rgeos)
+fire<- read_csv("building_fires.csv")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+firehouses <- read_csv("FDNY_Firehouse_Listing.csv") %>%
+  dplyr::filter(!is.na(Latitude))
+# The firehouse dataframe provides information on the location of all 218 firehouses in NYC. Relevant for our analysis are the following variables: FacilityName, Borough, Latitude, Longitude.
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(devtools)
+# Install the development version from Github. Run:
+#devtools::install_github("rstudio/leaflet")
+library(leaflet)
+```
+
+# 1. Location of Severe Fires
+__Provide a leaflet map of the highest severity fires (i.e. subset to the highest category in HIGHEST_LEVEL_DESC) contained in the file buiding_fires.csv. Ignore locations that fall outside the five boroughs of New York City. Provide at least three pieces of information on the incident in a popup.__
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+fire_highest <- fire %>%
+  filter(HIGHEST_LEVEL_DESC == "7 - Signal 7-5")
+
+fire_colors <- c('#fff7ec','#fee8c8','#fdd49e','#fdbb84','#fc8d59','#ef6548','#d7301f','#b30000','#7f0000')
+pal = colorFactor(palette = fire_colors, domain = fire_highest$FIRE_SPREAD_DESC) 
+color_offsel1 = pal(fire_highest$FIRE_SPREAD_DESC)
+```
+
+Below, the map shows the most severe fires across the five boroughs of New York city. The list below shows that the dataset is filtered for only values that fall into any of the boroughs and others are ignored. 
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE}
+unique(fire_highest$BOROUGH_DESC)
+
+content <- paste("Address:",fire_highest$address,"<br/>",
+                 "ZIP:",fire_highest$ZIP_CODE,"<br/>",
+                 "Date, time:",fire_highest$INCIDENT_DATE_TIME,"<br/>")
+
+leaflet(fire_highest, options = leafletOptions(minZoom = 10, maxZoom = 18)) %>%
+  addTiles() %>%    
+  addCircles(color = color_offsel1, popup = content) %>% 
+  setView(-73.935242, 40.730610, zoom = 7) %>%
+  addLegend(pal = pal, values = ~ fire_highest$FIRE_SPREAD_DESC, title = "Spread of the fire")
+
+```
+
+# 2. Layers and Clusters
+
+## a) Color by Type of Property
+
+__Start with the previous map. Now, distinguish the markers of the fire locations by PROPERTY_USE_DESC, i.e. what kind of property was affected. If there are too many categories, collapse some categories. Choose an appropriate coloring scheme to map the locations by type of affected property. Add a legend informing the user about the color scheme. Also make sure that the information about the type of affected property is now contained in the popup information. Show this map.__
+
+```{r eval=FALSE, include=FALSE}
+fct_count(fire_highest$PROPERTY_USE_DESC)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+fire_highest$property_use[fire_highest$PROPERTY_USE_DESC == "322 - Alcohol or substance abuse recovery center" | 
+                            fire_highest$PROPERTY_USE_DESC == "331 - Hospital - medical or psychiatric"| 
+                            fire_highest$PROPERTY_USE_DESC == "332 - Hospices" | 
+                            fire_highest$PROPERTY_USE_DESC == "340 - Clinics, doctors offices, hemodialysis cntr, other" |
+                            fire_highest$PROPERTY_USE_DESC == "341 - Clinic, clinic-type infirmary"| 
+                            fire_highest$PROPERTY_USE_DESC == "342 - Doctor, dentist or oral surgeon office"| 
+                            fire_highest$PROPERTY_USE_DESC == "300 - Health care, detention, & correction, other"| 
+                            fire_highest$PROPERTY_USE_DESC == "311 - 24-hour care Nursing homes, 4 or more persons" |
+                            fire_highest$PROPERTY_USE_DESC == "321 - Mental retardation/development disability facility"| 
+                            fire_highest$PROPERTY_USE_DESC == "363 - Reformatory, juvenile detention center"| 
+                            fire_highest$PROPERTY_USE_DESC == "365 - Police station" |
+                            fire_highest$PROPERTY_USE_DESC == "170 - Passenger terminal, other" |
+                            fire_highest$PROPERTY_USE_DESC == "173 - Bus station"| 
+                            fire_highest$PROPERTY_USE_DESC == "174 - Rapid transit station"| 
+                            fire_highest$PROPERTY_USE_DESC == "888 - Fire station"] = "Public services: care, justice, transport"
+fire_highest$property_use[fire_highest$PROPERTY_USE_DESC == "400 - Residential, other" |
+                          fire_highest$PROPERTY_USE_DESC == "419 - 1 or 2 family dwelling" |
+                          fire_highest$PROPERTY_USE_DESC == "429 - Multifamily dwelling" |
+                          fire_highest$PROPERTY_USE_DESC == "439 - Boarding/rooming house, residential hotels" |
+                          fire_highest$PROPERTY_USE_DESC == "449 - Hotel/motel, commercial" |
+                          fire_highest$PROPERTY_USE_DESC == "459 - Residential board and care" |
+                          fire_highest$PROPERTY_USE_DESC == "460 - Dormitory-type residence, other" | 
+                          fire_highest$PROPERTY_USE_DESC == "464 - Barracks, dormitory"| 
+                          fire_highest$PROPERTY_USE_DESC == "881 - Parking garage, (detached residential garage)" |
+                          fire_highest$PROPERTY_USE_DESC == "882 - Parking garage, general vehicle"] = 'Residential'
+fire_highest$property_use[fire_highest$PROPERTY_USE_DESC == "000 - Property Use, other" |
+                          fire_highest$PROPERTY_USE_DESC == "100 - Assembly, other"|
+                          fire_highest$PROPERTY_USE_DESC == "110 - Fixed-use recreation places, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "112 - Billiard center, pool hall"|
+                          fire_highest$PROPERTY_USE_DESC == "121 - Ballroom, gymnasium"|
+                          fire_highest$PROPERTY_USE_DESC == "123 - Stadium, arena" |
+                          fire_highest$PROPERTY_USE_DESC == "124 - Playground"| 
+                          fire_highest$PROPERTY_USE_DESC == "130 - Places of worship, funeral parlors, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "131 - Church, mosque, synagogue, temple, chapel"|
+                          fire_highest$PROPERTY_USE_DESC == "134 - Funeral parlor"| 
+                          fire_highest$PROPERTY_USE_DESC == "140 - Clubs, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "141 - Athletic/health club"|
+                          fire_highest$PROPERTY_USE_DESC == "142 - Clubhouse"|
+                          fire_highest$PROPERTY_USE_DESC == "143 - Yacht Club" |
+                          fire_highest$PROPERTY_USE_DESC == "144 - Casino, gambling clubs"|
+                          fire_highest$PROPERTY_USE_DESC == "150 - Public or government, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "152 - Museum"|
+                          fire_highest$PROPERTY_USE_DESC == "155 - Courthouse"| 
+                          fire_highest$PROPERTY_USE_DESC == "160 - Eating, drinking places, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "161 - Restaurant or cafeteria"|
+                          fire_highest$PROPERTY_USE_DESC == "162 - Bar or nightclub"|
+                          fire_highest$PROPERTY_USE_DESC == "180 - Studio/theater, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "181 - Live performance theater" |
+                          fire_highest$PROPERTY_USE_DESC == "182 - Auditorium, concert hall" |
+                          fire_highest$PROPERTY_USE_DESC == "183 - Movie theater"| 
+                          fire_highest$PROPERTY_USE_DESC == "186 - Film/movie production studio"] = 'Social gathering places'
+fire_highest$property_use[fire_highest$PROPERTY_USE_DESC == "200 - Educational, other"|
+                          fire_highest$PROPERTY_USE_DESC == "210 - Schools, non-adult, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "211 - Preschool"|
+                          fire_highest$PROPERTY_USE_DESC == "213 - Elementary school, including kindergarten"| 
+                          fire_highest$PROPERTY_USE_DESC == "215 - High school/junior high school/middle school"| 
+                          fire_highest$PROPERTY_USE_DESC == "241 - Adult education center, college classroom"| 
+                          fire_highest$PROPERTY_USE_DESC == "250 - Day care, other (Conversion only)"| 
+                          fire_highest$PROPERTY_USE_DESC == "254 - Day care, in commercial property"] = 'Education'
+fire_highest$property_use[fire_highest$PROPERTY_USE_DESC == "500 - Mercantile, business, other"|
+                          fire_highest$PROPERTY_USE_DESC == "511 - Convenience store"| 
+                          fire_highest$PROPERTY_USE_DESC == "519 - Food and beverage sales, grocery store" |
+                          fire_highest$PROPERTY_USE_DESC == "529 - Textile, wearing apparel sales" |
+                          fire_highest$PROPERTY_USE_DESC == "539 - Household goods, sales, repairs"| 
+                          fire_highest$PROPERTY_USE_DESC == "549 - Specialty shop" |
+                          fire_highest$PROPERTY_USE_DESC == "557 - Personal service, including barber & beauty shops"|
+                          fire_highest$PROPERTY_USE_DESC == "559 - Recreational, hobby, home repair sales, pet store"|
+                          fire_highest$PROPERTY_USE_DESC == "564 - Laundry, dry cleaning"|
+                          fire_highest$PROPERTY_USE_DESC == "569 - Professional supplies, services"| 
+                          fire_highest$PROPERTY_USE_DESC == "571 - Service station, gas station"| 
+                          fire_highest$PROPERTY_USE_DESC == "579 - Motor vehicle or boat sales, services, repair"| 
+                          fire_highest$PROPERTY_USE_DESC == "580 - General retail, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "581 - Department or discount store"| 
+                          fire_highest$PROPERTY_USE_DESC == "592 - Bank"| 
+                          fire_highest$PROPERTY_USE_DESC == "899 - Residential or self-storage units"] =  'Retail, service'
+fire_highest$property_use[fire_highest$PROPERTY_USE_DESC == "593 - Office: veterinary or research" |
+                          fire_highest$PROPERTY_USE_DESC == "596 - Post office or mailing firms"| 
+                          fire_highest$PROPERTY_USE_DESC ==  "599 - Business office"| 
+                          fire_highest$PROPERTY_USE_DESC == "610 - Energy production plant, other"|
+                          fire_highest$PROPERTY_USE_DESC == "615 - Electric-generating plant"| 
+                          fire_highest$PROPERTY_USE_DESC == "629 - Laboratory or science lababoratory"| 
+                          fire_highest$PROPERTY_USE_DESC == "635 - Computer center"| 
+                          fire_highest$PROPERTY_USE_DESC == "639 - Communications center"| 
+                          fire_highest$PROPERTY_USE_DESC == "642 - Electrical distribution"| 
+                          fire_highest$PROPERTY_USE_DESC == "648 - Sanitation utility"| 
+                          fire_highest$PROPERTY_USE_DESC == "700 - Manufacturing, processing"| 
+                          fire_highest$PROPERTY_USE_DESC == "800 - Storage, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "807 - Outside material storage area"| 
+                          fire_highest$PROPERTY_USE_DESC == "808 - Outbuilding or shed"| 
+                          fire_highest$PROPERTY_USE_DESC == "839 - Refrigerated storage"| 
+                          fire_highest$PROPERTY_USE_DESC == "880 - Vehicle storage, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "891 - Warehouse"| 
+                          fire_highest$PROPERTY_USE_DESC == "926 - Outbuilding, protective shelter"| 
+                          fire_highest$PROPERTY_USE_DESC == "984 - Industrial plant yard - area"] =  "Office, industry"
+fire_highest$property_use[fire_highest$PROPERTY_USE_DESC == "900 - Outside or special property, other"|
+                          fire_highest$PROPERTY_USE_DESC == "931 - Open land or field"| 
+                          fire_highest$PROPERTY_USE_DESC == "936 - Vacant lot"| 
+                          fire_highest$PROPERTY_USE_DESC == "960 - Street, other"| 
+                          fire_highest$PROPERTY_USE_DESC == "962 - Residential street, road or residential driveway"|
+                          fire_highest$PROPERTY_USE_DESC == "963 - Street or road in commercial area"| 
+                          fire_highest$PROPERTY_USE_DESC == "965 - Vehicle parking area"|
+                          fire_highest$PROPERTY_USE_DESC == "974 - Aircraft loading area"| 
+                          fire_highest$PROPERTY_USE_DESC == "981 - Construction site"] = "Outside place"
+fire_highest$property_use[fire_highest$PROPERTY_USE_DESC == "NNN - None"|
+                          fire_highest$PROPERTY_USE_DESC ==  "UUU - Undetermined" |
+                          fire_highest$property_use == "NA"] = "Undetermined"
+unique(fire_highest$property_use)
+na.omit(fire_highest$property_use)
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+content <- paste("Type of property:",fire_highest$PROPERTY_USE_DESC,"<br/>")
+
+cat_pal = colorFactor(palette = "Paired", domain = fire_highest$property_use) 
+color_offsel1 = cat_pal(fire_highest$property_use)
+
+leaflet(fire_highest, options = leafletOptions(minZoom = 10, maxZoom = 18)) %>%
+  addTiles() %>%    
+  addCircles(color = color_offsel1, popup = content) %>% 
+  setView(-73.935242, 40.730610, zoom = 7) %>%
+  addLegend(pal = cat_pal, values = fire_highest$property_use, title = "Place of the fire")
+```
+
+## b) Cluster
+
+Add marker clustering, so that zooming in will reveal the individual locations but the zoomed out map only shows the clusters. Show the map with clusters.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+leaflet(fire_highest, options = leafletOptions(minZoom = 10, maxZoom = 18)) %>%
+  addTiles() %>%    
+  setView(-73.935242, 40.730610, zoom = 7) %>%
+  addLegend(pal = cat_pal, values = fire_highest$property_use, title = "Place of the fire") %>%
+  addCircleMarkers(color = color_offsel1, 
+                       popup = content,
+                       clusterOptions = markerClusterOptions())
+
+```
+
+# 3. Fire Houses
+
+__The second data file contains the locations of the 218 firehouses in New York City. Start with the non-clustered map (2a) and now adjust the size of the circle markers by severity (TOTAL_INCIDENT_DURATION or UNITS_ONSCENE seem plausible options). More severe incidents should have larger circles on the map. On the map, also add the locations of the fire houses. Add two layers (“Incidents”, “Firehouses”) that allow the user to select which information to show.__
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+content <- paste("Place of fire:",fire_highest$property_use,"<br/>",
+                 "Specified:", fire_highest$PROPERTY_USE_DESC, "<br/>")
+
+cat_pal = colorFactor(palette = "Paired", domain = fire_highest$property_use) 
+color_offsel1 = cat_pal(fire_highest$property_use)
+
+fire_highest <- fire_highest %>%
+  mutate(incident_time = TOTAL_INCIDENT_DURATION / 100)
+
+firehouseIcon <- makeIcon(
+  iconUrl = "https://cdn1.iconfinder.com/data/icons/firefighters-filled-color/300/7363545Untitled-3-512.png",
+  iconWidth = 20, iconHeight = 20,
+  iconAnchorX = 20, iconAnchorY = 20)
+
+leaflet(fire_highest, options = leafletOptions(minZoom = 10, maxZoom = 18)) %>%
+  setView(-73.935242, 40.730610, zoom = 7) %>%
+  addTiles(group = "OpenStreetMap") %>%    
+  addCircles(group="Fires", color = color_offsel1, popup = content, radius = ~fire_highest$incident_time) %>%
+  # Add second layer
+  addMarkers(group = "Firehouses", firehouses$Longitude, firehouses$Latitude, icon = firehouseIcon) %>%
+  addLayersControl(baseGroups = c("OpenStreetMap"),
+                   overlayGroups = c("Fires","Firehouses"),
+                   options = layersControlOptions(collapsed = TRUE) )
+```
+
+# 4. Distance from Firehouse and Response Time
+
+__We now want to investigate whether the distance of the incident from the nearest firehouse varies across the city.__
+
+## a) Calculate Distance
+
+__For all incident locations (independent of severity), identify the nearest firehouse and calculate the distance between the firehouse and the incident location. Provide a scatter plot showing the time until the first engine arrived (the variables INCIDENT_DATE_TIME and ARRIVAL_DATE_TIME) will be helpful.__
+
+```{r error= TRUE, message=FALSE, warning=FALSE, include=FALSE}
+fire_loc <- fire[,c("lon", "lat")]
+sp_fire <- SpatialPointsDataFrame(coords = fire_loc, data = fire,
+                               proj4string = CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
+firehouses_loc <- firehouses[,c("Longitude", "Latitude")]
+sp_firehouses <- SpatialPointsDataFrame(coords = firehouses_loc, data = firehouses,
+                               proj4string = CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
+
+
+distance <- apply(gDistance(sp_fire, sp_firehouses, byid=TRUE),2,min)
+sp_fire@data$nearest<-distance
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(lubridate)
+sp_fire@data$INCIDENT_DATE_TIME <- as.POSIXct(sp_fire@data$INCIDENT_DATE_TIME, format = "%m/%d/%Y %I:%M:%S %p")
+sp_fire@data$ARRIVAL_DATE_TIME <- as.POSIXct(sp_fire@data$ARRIVAL_DATE_TIME, format = "%m/%d/%Y %I:%M:%S %p")
+
+sp_fire@data$time_waited <- difftime(sp_fire@data$ARRIVAL_DATE_TIME, sp_fire@data$INCIDENT_DATE_TIME, units='mins')
+as.numeric(sp_fire@data$time_waited)
+```
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+library(ggthemes)
+library(hrbrthemes)
+ggplot(sp_fire@data, aes(x = nearest, y = time_waited, color = BOROUGH_DESC)) +
+  geom_point(alpha = 0.5) +
+  xlim(low = 0, high = 0.045) +
+  ylim(low = 0, high = 21 ) +
+  theme_ipsum() +
+  theme(
+    plot.title = element_text(hjust = 0.2, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic")) +
+  labs(x = "Distance of the closest firehouse to the fire", y = "Minutes from incident to arrival of help", colour = "Boroughs") +
+  labs(title = "Distance between fire and firehouse plotted against the time until help",
+       caption = "Data source: New York City Open Data")
+```
+
+__Now also visualize the patterns separately for severe and non-severe incidents (use HIGHEST_LEVEL_DESC but feel free to reduce the number of categories). What do you find?__
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+sp_fire@data$HIGHEST_LEVEL_DESC[sp_fire@data$HIGHEST_LEVEL_DESC == "0 - Initial alarm"] = '0 - Initial alarm'
+sp_fire@data$HIGHEST_LEVEL_DESC[sp_fire@data$HIGHEST_LEVEL_DESC == "1 - More than initial alarm, less than Signal 7-5" |
+                                sp_fire@data$HIGHEST_LEVEL_DESC == "11 - First Alarm"] = '1 - First alarm'
+sp_fire@data$HIGHEST_LEVEL_DESC[sp_fire@data$HIGHEST_LEVEL_DESC == "2 - 2nd alarm" |
+                                sp_fire@data$HIGHEST_LEVEL_DESC == "22 - Second Alarm"] = '2 - Second alarm'
+sp_fire@data$HIGHEST_LEVEL_DESC[sp_fire@data$HIGHEST_LEVEL_DESC == "3 - 3rd alarm" |
+                                sp_fire@data$HIGHEST_LEVEL_DESC == "33 - Third Alarm"] = '3 - Third alarm'
+sp_fire@data$HIGHEST_LEVEL_DESC[sp_fire@data$HIGHEST_LEVEL_DESC == "4 - 4th alarm" |
+                                sp_fire@data$HIGHEST_LEVEL_DESC == "44 - Fourth Alarm"] = '4 - Fourth alarm'
+sp_fire@data$HIGHEST_LEVEL_DESC[sp_fire@data$HIGHEST_LEVEL_DESC == "5 - 5th alarm" |
+                                sp_fire@data$HIGHEST_LEVEL_DESC == "55 - Fifth Alarm"] = '5 - Fifth alarm'
+sp_fire@data$HIGHEST_LEVEL_DESC[sp_fire@data$HIGHEST_LEVEL_DESC == "7 - Signal 7-5" |
+                                sp_fire@data$HIGHEST_LEVEL_DESC == "75 - All Hands Working"] = '6 - Final alarm'
+```
+
+
+```{r echo=FALSE, fig.align="center", message=FALSE, warning=FALSE, out.width="70%"}
+ggplot(sp_fire@data, aes(x = nearest, y = time_waited, color = HIGHEST_LEVEL_DESC)) +
+  geom_point(alpha = 0.5) +
+  xlim(low = 0, high = 0.045) +
+  ylim(low = 0, high = 21 ) +
+  theme_ipsum() +
+  theme(
+    plot.title = element_text(hjust = 0.2, size = 12),     
+    plot.caption = element_text(hjust = 0, face = "italic")) +
+  labs(x = "Distance of the closest firehouse to the fire", y = "Minutes from incident to arrival of help", colour = "Boroughs") +
+  labs(title = "Distance between fire and firehouse plotted against the time until help",
+       caption = "Data source: New York City Open Data")
+```
+
+The graph above shows that there is a slight positive relationship between the distance from the nearest firehouse and the time between the incident happened and the fire fighters arrived. However, outlier values are mostly belong to the first alarm category or to the final alarm. Looking at the final alarm outliers, it is visible that these outliers are closer to firehouses location-wise, yet still have a long response time. But the spread of the pink dots is wider vertically around the left side of the graph. On the other hand, some pink doth indicating that the location of the fire is distant from the fire station still show low response times. 
+
+## b) Map of Response Times
+
+__Provide a map visualization of response times. Investigate whether the type of property affected (PROPERTY_USE_DESC) or fire severity (HIGHEST_LEVEL_DESC) play a role here.__ 
+```{r message=FALSE, warning=FALSE, include=FALSE}
+sp_fire@data$time_waited <- as.numeric(sp_fire@data$time_waited)
+sp_fire@data <- sp_fire@data %>%
+  mutate(time_waited_adjusted = time_waited * 10)
+sp_fire@data
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+sp_fire@data$property_use[sp_fire@data$PROPERTY_USE_DESC == "322 - Alcohol or substance abuse recovery center" | 
+                            sp_fire@data$PROPERTY_USE_DESC == "331 - Hospital - medical or psychiatric"| 
+                           sp_fire@data$PROPERTY_USE_DESC == "332 - Hospices" | 
+                           sp_fire@data$PROPERTY_USE_DESC == "340 - Clinics, doctors offices, hemodialysis cntr, other" |
+                            sp_fire@data$PROPERTY_USE_DESC == "341 - Clinic, clinic-type infirmary"| 
+                           sp_fire@data$PROPERTY_USE_DESC == "342 - Doctor, dentist or oral surgeon office"| 
+                            sp_fire@data$PROPERTY_USE_DESC == "300 - Health care, detention, & correction, other"| 
+                            sp_fire@data$PROPERTY_USE_DESC == "311 - 24-hour care Nursing homes, 4 or more persons" |
+                            sp_fire@data$PROPERTY_USE_DESC == "321 - Mental retardation/development disability facility"| 
+                            sp_fire@data$PROPERTY_USE_DESC == "363 - Reformatory, juvenile detention center"| 
+                            sp_fire@data$PROPERTY_USE_DESC == "365 - Police station" |
+                            sp_fire@data$PROPERTY_USE_DESC == "170 - Passenger terminal, other" |
+                            sp_fire@data$PROPERTY_USE_DESC == "173 - Bus station"| 
+                            sp_fire@data$PROPERTY_USE_DESC == "174 - Rapid transit station"| 
+                            sp_fire@data$PROPERTY_USE_DESC == "888 - Fire station"] = "Public services: care, justice, transport"
+sp_fire@data$property_use[sp_fire@data$PROPERTY_USE_DESC == "400 - Residential, other" |
+                         sp_fire@data$PROPERTY_USE_DESC == "419 - 1 or 2 family dwelling" |
+                          sp_fire@data$PROPERTY_USE_DESC == "429 - Multifamily dwelling" |
+                          sp_fire@data$PROPERTY_USE_DESC == "439 - Boarding/rooming house, residential hotels" |
+                          sp_fire@data$PROPERTY_USE_DESC == "449 - Hotel/motel, commercial" |
+                          sp_fire@data$PROPERTY_USE_DESC == "459 - Residential board and care" |
+                          sp_fire@data$PROPERTY_USE_DESC == "460 - Dormitory-type residence, other" | 
+                          sp_fire@data$PROPERTY_USE_DESC == "464 - Barracks, dormitory"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "881 - Parking garage, (detached residential garage)" |
+                         sp_fire@data$PROPERTY_USE_DESC == "882 - Parking garage, general vehicle"] = 'Residential'
+sp_fire@data$property_use[sp_fire@data$PROPERTY_USE_DESC == "000 - Property Use, other" |
+                          sp_fire@data$PROPERTY_USE_DESC == "100 - Assembly, other"|
+                          sp_fire@data$PROPERTY_USE_DESC == "110 - Fixed-use recreation places, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "112 - Billiard center, pool hall"|
+                          sp_fire@data$PROPERTY_USE_DESC == "121 - Ballroom, gymnasium"|
+                          sp_fire@data$PROPERTY_USE_DESC == "123 - Stadium, arena" |
+                          sp_fire@data$PROPERTY_USE_DESC == "124 - Playground"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "130 - Places of worship, funeral parlors, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "131 - Church, mosque, synagogue, temple, chapel"|
+                          sp_fire@data$PROPERTY_USE_DESC == "134 - Funeral parlor"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "140 - Clubs, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "141 - Athletic/health club"|
+                          sp_fire@data$PROPERTY_USE_DESC == "142 - Clubhouse"|
+                          sp_fire@data$PROPERTY_USE_DESC == "143 - Yacht Club" |
+                          sp_fire@data$PROPERTY_USE_DESC == "144 - Casino, gambling clubs"|
+                          sp_fire@data$PROPERTY_USE_DESC == "150 - Public or government, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "152 - Museum"|
+                          sp_fire@data$PROPERTY_USE_DESC == "155 - Courthouse"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "160 - Eating, drinking places, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "161 - Restaurant or cafeteria"|
+                         sp_fire@data$PROPERTY_USE_DESC == "162 - Bar or nightclub"|
+                          sp_fire@data$PROPERTY_USE_DESC == "180 - Studio/theater, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "181 - Live performance theater" |
+                          sp_fire@data$PROPERTY_USE_DESC == "182 - Auditorium, concert hall" |
+                          sp_fire@data$PROPERTY_USE_DESC == "183 - Movie theater"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "186 - Film/movie production studio"] = 'Social gathering places'
+sp_fire@data$property_use[sp_fire@data$PROPERTY_USE_DESC == "200 - Educational, other"|
+                          sp_fire@data$PROPERTY_USE_DESC == "210 - Schools, non-adult, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "211 - Preschool"|
+                          sp_fire@data$PROPERTY_USE_DESC == "213 - Elementary school, including kindergarten"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "215 - High school/junior high school/middle school"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "241 - Adult education center, college classroom"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "250 - Day care, other (Conversion only)"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "254 - Day care, in commercial property"] = 'Education'
+sp_fire@data$property_use[sp_fire@data$PROPERTY_USE_DESC == "500 - Mercantile, business, other"|
+                          sp_fire@data$PROPERTY_USE_DESC == "511 - Convenience store"| 
+                         sp_fire@data$PROPERTY_USE_DESCC == "519 - Food and beverage sales, grocery store" |
+                          sp_fire@data$PROPERTY_USE_DESC == "529 - Textile, wearing apparel sales" |
+                          sp_fire@data$PROPERTY_USE_DESC == "539 - Household goods, sales, repairs"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "549 - Specialty shop" |
+                          sp_fire@data$PROPERTY_USE_DESC == "557 - Personal service, including barber & beauty shops"|
+                          sp_fire@data$PROPERTY_USE_DESC == "559 - Recreational, hobby, home repair sales, pet store"|
+                          sp_fire@data$PROPERTY_USE_DESC == "564 - Laundry, dry cleaning"|
+                          sp_fire@data$PROPERTY_USE_DESC == "569 - Professional supplies, services"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "571 - Service station, gas station"| 
+                         sp_fire@data$PROPERTY_USE_DESC == "579 - Motor vehicle or boat sales, services, repair"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "580 - General retail, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "581 - Department or discount store"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "592 - Bank"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "899 - Residential or self-storage units"] =  'Retail, service'
+sp_fire@data$property_use[sp_fire@data$PROPERTY_USE_DESC == "593 - Office: veterinary or research" |
+                         sp_fire@data$PROPERTY_USE_DESC == "596 - Post office or mailing firms"| 
+                          sp_fire@data$PROPERTY_USE_DESC ==  "599 - Business office"| 
+                         sp_fire@data$PROPERTY_USE_DESC == "610 - Energy production plant, other"|
+                          sp_fire@data$PROPERTY_USE_DESC == "615 - Electric-generating plant"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "629 - Laboratory or science lababoratory"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "635 - Computer center"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "639 - Communications center"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "642 - Electrical distribution"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "648 - Sanitation utility"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "700 - Manufacturing, processing"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "800 - Storage, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "807 - Outside material storage area"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "808 - Outbuilding or shed"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "839 - Refrigerated storage"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "880 - Vehicle storage, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "891 - Warehouse"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "926 - Outbuilding, protective shelter"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "984 - Industrial plant yard - area"] =  "Office, industry"
+sp_fire@data$property_use[sp_fire@data$PROPERTY_USE_DESC == "900 - Outside or special property, other"|
+                          sp_fire@data$PROPERTY_USE_DESC == "931 - Open land or field"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "936 - Vacant lot"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "960 - Street, other"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "962 - Residential street, road or residential driveway"|
+                          sp_fire@data$PROPERTY_USE_DESC == "963 - Street or road in commercial area"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "965 - Vehicle parking area"|
+                          sp_fire@data$PROPERTY_USE_DESC == "974 - Aircraft loading area"| 
+                          sp_fire@data$PROPERTY_USE_DESC == "981 - Construction site"] = "Outside place"
+sp_fire@data$property_use[sp_fire@data$PROPERTY_USE_DESC == "NNN - None"|
+                          sp_fire@data$PROPERTY_USE_DESC ==  "UUU - Undetermined" |
+                          sp_fire@data$property_use == "NA"] = "Undetermined"
+```
+
+The below map shows the relationship between 
+  
+  1) time between incident and arrival of help and the type of property
+  
+  2) time between incident and arrival of help and the severity of the fire
+  
+The map is presented in two layers and popups are provided for the type of property and severity of the fire. The use of this map is best to look at the largest plots of the map showing that the help that arrived to the fire was slow and look at what the popups show for these spots. 
+
+The first layer (1) shows that the longest it took for fire fighters to arrive in the midtown and financial district area and the largest circles appear for office buildings and for hotels mostly. (The largest circle stands actually stands for an unspecified place.)
+
+The second layer shows that for these large circles on the map, there has been only one alarm.  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+content_property <- paste("Place of fire:",sp_fire@data$PROPERTY_USE_DESC,"<br/>")
+content_severity <- paste("Severity:",sp_fire@data$HIGHEST_LEVEL_DESC,"<br/>")
+
+#cat_pal = colorFactor(palette = "Paired", domain = fire_highest$property_use) 
+#color_offsel1 = cat_pal(fire_highest$property_use)
+
+
+leaflet(sp_fire@data, options = leafletOptions(minZoom = 10, maxZoom = 18)) %>%
+  setView(-73.935242, 40.730610, zoom = 7) %>%
+  addTiles(group = "OpenStreetMap") %>%   
+  # First layer: time waited for the help and the property affected.
+  addCircles(group = "Type of property", color = "blue", popup = content_property, radius = ~sp_fire@data$time_waited_adjusted) %>%
+  # Add second layer: time waited and the level of severity
+  addCircles(group = "Severity", color = "red", popup = content_severity, radius = ~sp_fire@data$time_waited_adjusted) %>%
+  # Add layer controls
+  addLayersControl(baseGroups = c("OpenStreetMap"),
+                   overlayGroups = c("Type of property","Severity"),
+                   options = layersControlOptions(collapsed = TRUE) )
+```
+
+
+
+
+
